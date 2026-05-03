@@ -1,8 +1,9 @@
-from multiprocessing import parent_process
-import random
-from typing import Tuple, List, Dict, Optional
 import enum
+import random
 from collections import deque
+from multiprocessing import parent_process
+from typing import Dict, List, Optional, Tuple
+
 from termcolor import colored
 
 DEFAULT_SIZE = 32

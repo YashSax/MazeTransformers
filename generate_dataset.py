@@ -1,9 +1,12 @@
 import argparse
-import os
 import json
-from tqdm import tqdm
+import os
 import shutil
-from maze import generate_maze, solve_maze, convert_to_directions
+
+from tqdm import tqdm
+
+from maze import convert_to_directions, generate_maze, solve_maze
+
 
 def generate_mazes(size: int, num_mazes: int, output_dir: str):
     if os.path.isdir(output_dir):

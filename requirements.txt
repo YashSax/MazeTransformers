@@ -1,4 +1,6 @@
 torch
-PyYAML
+pyyaml
 tqdm
 termcolor
+numpy
+matplotlib

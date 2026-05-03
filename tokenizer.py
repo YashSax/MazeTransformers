@@ -1,29 +1,31 @@
 import enum
 from typing import List
 
+
 class Tokens(enum.Enum):
     # Path tokens
     TOKEN_RIGHT = 0
-    TOKEN_LEFT  = 1
-    TOKEN_UP    = 2
-    TOKEN_DOWN  = 3
-    TOKEN_EOS   = 4
+    TOKEN_LEFT = 1
+    TOKEN_UP = 2
+    TOKEN_DOWN = 3
+    TOKEN_EOS = 4
 
     # Maze tokens
-    TOKEN_WALL        = 5
-    TOKEN_PATH        = 6
-    TOKEN_NEWLINE     = 7
+    TOKEN_WALL = 5
+    TOKEN_PATH = 6
+    TOKEN_NEWLINE = 7
     TOKEN_END_OF_MAZE = 8
 
     TOKEN_PAD = 9
 
 
 TOKEN_MAP = {
-    "down" : Tokens.TOKEN_DOWN,
-    "up" : Tokens.TOKEN_UP,
-    "right" : Tokens.TOKEN_RIGHT,
-    "left" : Tokens.TOKEN_LEFT
+    "down": Tokens.TOKEN_DOWN,
+    "up": Tokens.TOKEN_UP,
+    "right": Tokens.TOKEN_RIGHT,
+    "left": Tokens.TOKEN_LEFT,
 }
+
 
 def tokenize(maze: List[List[int]], path: List[str]):
     tokenized = []

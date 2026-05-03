@@ -1,18 +1,19 @@
-from typing import Any
-from generate_dataset import generate_dataset
-from model import MazeTransformer
-from tokenizer import tokenize, Tokens
-import json
 import argparse
-import yaml
-from torch.utils.data import Dataset, DataLoader
+import json
 import os
+from typing import Any, Tuple
+
 import torch
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
+import yaml
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
-from typing import Tuple
+from torch.utils.data import DataLoader, Dataset
+
+from generate_dataset import generate_dataset
+from model import MazeTransformer
+from tokenizer import Tokens, tokenize
 
 
 class MazeDataset(Dataset):
@@ -57,7 +58,9 @@ def create_causal_mask(maze_sizes: Tensor, seq_len: int):
     return torch.stack(masks).unsqueeze(1)
 
 
-def calculate_loss(model_output: Tensor, targets: Tensor, maze_sizes: Tuple[Tensor], device='mps'): # TODO: check the math on this -> if I were to guess why learning isn't slow it's prob this
+def calculate_loss(
+    model_output: Tensor, targets: Tensor, maze_sizes: Tuple[Tensor], device="mps"
+):  # TODO: check the math on this -> if I were to guess why learning isn't slow it's prob this
     # This is super inefficient, there should be a way for targets to be a padded Tensor
     # Loss function shouldn't be putting things on the device.
     loss = 0
@@ -70,7 +73,7 @@ def calculate_loss(model_output: Tensor, targets: Tensor, maze_sizes: Tuple[Tens
 
         start = maze_size - 1
         predicted = full_prediction[start : start + target.shape[0]]
-        loss += F.cross_entropy(predicted, target, reduction='none').sum()
+        loss += F.cross_entropy(predicted, target, reduction="none").sum()
 
     loss /= num_elements
     return loss
@@ -122,13 +125,19 @@ def train(config, data_dir):
                 masks = masks.to(config["device"])
 
                 model_out = model.forward(sequences, masks)
-                loss = calculate_loss(model_out, targets, sizes, device=config["device"])
+                loss = calculate_loss(
+                    model_out, targets, sizes, device=config["device"]
+                )
 
                 cumulative_test_loss += loss.item()
                 num_test_batches += 1
 
-        print(f"Epoch {epoch + 1}: average train loss = {cumulative_train_loss / num_train_batches}")
-        print(f"Epoch {epoch + 1}: average test loss = {cumulative_test_loss / num_test_batches}")
+        print(
+            f"Epoch {epoch + 1}: average train loss = {cumulative_train_loss / num_train_batches}"
+        )
+        print(
+            f"Epoch {epoch + 1}: average test loss = {cumulative_test_loss / num_test_batches}"
+        )
 
 
 if __name__ == "__main__":

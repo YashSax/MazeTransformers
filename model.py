@@ -1,26 +1,16 @@
+from typing import Dict, Optional
+
 import torch
-from torch import Tensor
-from torch.nn import (
-    Module,
-    Embedding,
-    Linear,
-    ModuleList,
-    LayerNorm,
-    Dropout,
-    Sequential,
-)
 import torch.nn.functional as F
-from typing import Optional, Dict
+from torch import Tensor
+from torch.nn import (Dropout, Embedding, LayerNorm, Linear, Module,
+                      ModuleList, Sequential)
 from torch.nn.modules.activation import GELU
 
 
 class MultiHeadAttention(Module):
     def __init__(
-        self,
-        d_model: int,
-        n_heads: int,
-        dropout: float = 0.0,
-        device: str = 'cuda'
+        self, d_model: int, n_heads: int, dropout: float = 0.0, device: str = "cuda"
     ):
         super().__init__()
         assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
@@ -45,11 +35,7 @@ class MultiHeadAttention(Module):
 
 class TransformerBlock(Module):
     def __init__(
-        self,
-        d_model: int,
-        n_heads: int,
-        dropout: float = 0.0,
-        device: str = 'mps'
+        self, d_model: int, n_heads: int, dropout: float = 0.0, device: str = "mps"
     ):
         super().__init__()
         self.attn = MultiHeadAttention(d_model, n_heads, dropout, device)
@@ -69,10 +55,7 @@ class TransformerBlock(Module):
 
 
 class MazeTransformer(Module):
-    def __init__(
-        self,
-        config: Dict
-    ):
+    def __init__(self, config: Dict):
         super().__init__()
         self.vocab_size = config["vocab_size"]
         self.output_vocab_size = config["output_vocab_size"]
@@ -83,10 +66,19 @@ class MazeTransformer(Module):
         self.n_layers = config["n_layers"]
         self.dropout = config["dropout"]
 
-        self.embedding_layer = Embedding(self.vocab_size, self.d_model, device=self.device)
-        self.pos_embedding_layer = Embedding(self.max_seq_len, self.d_model, device=self.device)
+        self.embedding_layer = Embedding(
+            self.vocab_size, self.d_model, device=self.device
+        )
+        self.pos_embedding_layer = Embedding(
+            self.max_seq_len, self.d_model, device=self.device
+        )
         self.transformer_blocks = ModuleList(
-            [TransformerBlock(self.d_model, self.n_heads, self.dropout, device=self.device) for _ in range(self.n_layers)]
+            [
+                TransformerBlock(
+                    self.d_model, self.n_heads, self.dropout, device=self.device
+                )
+                for _ in range(self.n_layers)
+            ]
         )
         self.ln = LayerNorm(self.d_model, device=self.device)
         self.head = Linear(
@@ -95,7 +87,9 @@ class MazeTransformer(Module):
 
     def forward(self, x: Tensor, causal_mask: Tensor) -> Tensor:
         token_embeddings = self.embedding_layer(x)
-        pos_embeddings = self.pos_embedding_layer(torch.arange(x.size(1), device=self.device))
+        pos_embeddings = self.pos_embedding_layer(
+            torch.arange(x.size(1), device=self.device)
+        )
         x = token_embeddings + pos_embeddings
 
         for transformer_block in self.transformer_blocks:
