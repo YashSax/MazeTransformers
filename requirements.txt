@@ -4,3 +4,4 @@ tqdm
 termcolor
 numpy
 matplotlib
+wandb

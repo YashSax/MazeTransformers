@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
 
 import torch
 import torch.nn.functional as F
@@ -15,6 +15,15 @@ from generate_dataset import generate_dataset
 from model import MazeTransformer
 from tokenizer import Tokens, tokenize
 
+import wandb
+
+def create_wandb_run(config: Dict):
+    return wandb.init(
+        entity=config["entity"],
+        project=config["project"],
+        name=f"run: {config["name"]}, model: {config["model"]["name"]}",
+        config=config
+    )
 
 class MazeDataset(Dataset):
     def __init__(self, dataset_path: str):
@@ -79,7 +88,7 @@ def calculate_loss(
     return loss
 
 
-def train(config, data_dir):
+def train(config, data_dir, wandb_run=None):
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
@@ -132,16 +141,26 @@ def train(config, data_dir):
                 cumulative_test_loss += loss.item()
                 num_test_batches += 1
 
+        avg_train_loss = cumulative_train_loss / num_train_batches
+        avg_test_loss = cumulative_test_loss / num_test_batches
         print(
-            f"Epoch {epoch + 1}: average train loss = {cumulative_train_loss / num_train_batches}"
+            f"Epoch {epoch + 1}: average train loss = {avg_train_loss}"
         )
         print(
-            f"Epoch {epoch + 1}: average test loss = {cumulative_test_loss / num_test_batches}"
+            f"Epoch {epoch + 1}: average test loss = {avg_test_loss}"
         )
+
+        if wandb_run:
+            run.log({"avg_train_loss" : avg_train_loss, "avg_test_loss" : avg_test_loss})
+
+    if not os.path.exists(config["output_dir"]):
+        os.makedirs(config["output_dir"])
+    torch.save(model.state_dict(), os.path.join(config["output_dir"], config["name"]))
 
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
+    args.add_argument("-wl", "--wandb_log", action="store_true")
     args.add_argument("--config", type=str, default="configs/config.yaml")
 
     args = args.parse_args()
@@ -150,4 +169,5 @@ if __name__ == "__main__":
 
     generate_dataset(**config["dataset"])
 
-    train(config["model"], config["dataset"]["output_dir"])
+    run = create_wandb_run(config) if args.wandb_log else None
+    train(config["model"], config["dataset"]["output_dir"], run)

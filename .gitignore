@@ -8,3 +8,9 @@ __pycache__/
 venv/
 env/
 maze_rl/
+
+# Logging
+wandb/
+
+# Models
+models/
