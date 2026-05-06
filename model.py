@@ -107,14 +107,12 @@ class MazeTransformer(Module):
             causal_mask = torch.ones((all_tokens.shape[0], all_tokens.shape[0])).tril().bool()
             causal_mask[:original_size, :original_size] = True
 
-            print("Model input:", all_tokens)
             model_out = self.forward(
                 all_tokens.unsqueeze(0),
                 causal_mask.unsqueeze(0).to(self.device)
             )
 
             prediction = torch.argmax(model_out.squeeze()[-1])
-            print("Logits:", model_out.squeeze()[-1])
             generated_tokens = torch.concat([generated_tokens, prediction.unsqueeze(0)])
             if prediction.item() == Tokens.TOKEN_EOS.value:
                 break

@@ -90,7 +90,18 @@ def calculate_loss(
     return loss, num_completed / model_output.shape[0]
 
 
-def train(config, data_dir, wandb_run=None):
+def train(config, data_dir, wandb_run=None, save_every=5):
+    if not os.path.exists(config["output_dir"]):
+        os.makedirs(config["output_dir"])
+
+    if not os.path.exists(os.path.join(config["output_dir"], config["name"])):
+        os.makedirs(os.path.join(config["output_dir"], config["name"]))
+        os.makedirs(os.path.join(config["output_dir"], config["name"], "checkpoints"))
+
+    with open(os.path.join(config["output_dir"], config["name"], "config.yaml"), "w") as f:
+        yaml.safe_dump(config, f)
+
+
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
@@ -100,6 +111,8 @@ def train(config, data_dir, wandb_run=None):
         test_dataset, batch_size=1, shuffle=True, collate_fn=maze_collate_fn
     )
     model = MazeTransformer(config).to(config["device"])
+    torch.compile(model)
+
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
     best_test_loss = 1e99
@@ -181,14 +194,9 @@ def train(config, data_dir, wandb_run=None):
                 "avg_test_completion_rate" : avg_test_completion_rate
             })
 
-    if not os.path.exists(config["output_dir"]):
-        os.makedirs(config["output_dir"])
+        if epoch + 1 % 5 == 0:
+            torch.save(best_state_dict, os.path.join(config["output_dir"], config["name"], "checkpoints", f"checkpoint_{epoch + 1}"))
 
-    if not os.path.exists(os.path.join(config["output_dir"], config["name"])):
-        os.makedirs(os.path.join(config["output_dir"], config["name"]))
-
-    with open(os.path.join(config["output_dir"], "config.yaml"), "w") as f:
-        yaml.safe_dump(config, f)
     torch.save(best_state_dict, os.path.join(config["output_dir"], config["name"], "model"))
 
 
