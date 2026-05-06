@@ -1,5 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import ListedColormap
 
 # 0 = wall, 1 = open, 2 = path, 3 = start, 4 = end
@@ -27,7 +27,9 @@ ax.imshow(maze, cmap=cmap, vmin=0, vmax=4)
 ax.set_xticks(np.arange(-0.5, 32, 1), minor=True)
 ax.set_yticks(np.arange(-0.5, 32, 1), minor=True)
 ax.grid(which="minor", color="gray", linewidth=0.5)
-ax.tick_params(which="both", bottom=False, left=False, labelbottom=False, labelleft=False)
+ax.tick_params(
+    which="both", bottom=False, left=False, labelbottom=False, labelleft=False
+)
 
 plt.savefig("maze.png", dpi=150, bbox_inches="tight")
 plt.show()

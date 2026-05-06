@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Any, Tuple, Dict
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -11,19 +11,20 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, Dataset
 
+import wandb
 from generate_dataset import generate_dataset
 from model import MazeTransformer
 from tokenizer import Tokens, tokenize
 
-import wandb
 
 def create_wandb_run(config: Dict):
     return wandb.init(
         entity=config["entity"],
         project=config["project"],
         name=f"run: {config["name"]}, model: {config["model"]["name"]}",
-        config=config
+        config=config,
     )
+
 
 class MazeDataset(Dataset):
     def __init__(self, dataset_path: str):
@@ -98,9 +99,10 @@ def train(config, data_dir, wandb_run=None, save_every=5):
         os.makedirs(os.path.join(config["output_dir"], config["name"]))
         os.makedirs(os.path.join(config["output_dir"], config["name"], "checkpoints"))
 
-    with open(os.path.join(config["output_dir"], config["name"], "config.yaml"), "w") as f:
+    with open(
+        os.path.join(config["output_dir"], config["name"], "config.yaml"), "w"
+    ) as f:
         yaml.safe_dump(config, f)
-
 
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
@@ -134,7 +136,9 @@ def train(config, data_dir, wandb_run=None, save_every=5):
 
             optimizer.zero_grad()
             model_out = model.forward(sequences, masks)
-            loss, completion_rate = calculate_loss(model_out, targets, sizes, device=config["device"])
+            loss, completion_rate = calculate_loss(
+                model_out, targets, sizes, device=config["device"]
+            )
 
             loss.backward()
             optimizer.step()
@@ -171,12 +175,8 @@ def train(config, data_dir, wandb_run=None, save_every=5):
             best_test_loss = avg_test_loss
             best_state_dict = model.state_dict()
 
-        print(
-            f"Epoch {epoch + 1}: average train loss = {avg_train_loss}"
-        )
-        print(
-            f"Epoch {epoch + 1}: average test loss = {avg_test_loss}"
-        )
+        print(f"Epoch {epoch + 1}: average train loss = {avg_train_loss}")
+        print(f"Epoch {epoch + 1}: average test loss = {avg_test_loss}")
         print(
             f"Epoch {epoch + 1}: average train completion rate = {avg_train_completion_rate}"
         )
@@ -185,19 +185,30 @@ def train(config, data_dir, wandb_run=None, save_every=5):
         )
         print("-" * 80)
 
-
         if wandb_run:
-            run.log({
-                "avg_train_loss" : avg_train_loss,
-                "avg_test_loss" : avg_test_loss,
-                "avg_train_completion_rate" : avg_train_completion_rate,
-                "avg_test_completion_rate" : avg_test_completion_rate
-            })
+            run.log(
+                {
+                    "avg_train_loss": avg_train_loss,
+                    "avg_test_loss": avg_test_loss,
+                    "avg_train_completion_rate": avg_train_completion_rate,
+                    "avg_test_completion_rate": avg_test_completion_rate,
+                }
+            )
 
         if epoch + 1 % 5 == 0:
-            torch.save(best_state_dict, os.path.join(config["output_dir"], config["name"], "checkpoints", f"checkpoint_{epoch + 1}"))
+            torch.save(
+                best_state_dict,
+                os.path.join(
+                    config["output_dir"],
+                    config["name"],
+                    "checkpoints",
+                    f"checkpoint_{epoch + 1}",
+                ),
+            )
 
-    torch.save(best_state_dict, os.path.join(config["output_dir"], config["name"], "model"))
+    torch.save(
+        best_state_dict, os.path.join(config["output_dir"], config["name"], "model")
+    )
 
 
 if __name__ == "__main__":

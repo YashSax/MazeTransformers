@@ -1,11 +1,13 @@
 from typing import Dict, Optional
-from tokenizer import Tokens
+
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import (Dropout, Embedding, LayerNorm, Linear, Module,
                       ModuleList, Sequential)
 from torch.nn.modules.activation import GELU
+
+from tokenizer import Tokens
 
 
 class MultiHeadAttention(Module):
@@ -104,12 +106,13 @@ class MazeTransformer(Module):
         original_size = x.shape[0]
         for i in range(max_tokens):
             all_tokens = torch.concat([x, generated_tokens])
-            causal_mask = torch.ones((all_tokens.shape[0], all_tokens.shape[0])).tril().bool()
+            causal_mask = (
+                torch.ones((all_tokens.shape[0], all_tokens.shape[0])).tril().bool()
+            )
             causal_mask[:original_size, :original_size] = True
 
             model_out = self.forward(
-                all_tokens.unsqueeze(0),
-                causal_mask.unsqueeze(0).to(self.device)
+                all_tokens.unsqueeze(0), causal_mask.unsqueeze(0).to(self.device)
             )
 
             prediction = torch.argmax(model_out.squeeze()[-1])
