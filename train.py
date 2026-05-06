@@ -61,7 +61,7 @@ def maze_collate_fn(batch):
 def create_causal_mask(maze_sizes: Tensor, seq_len: int):
     masks = []
     for size in maze_sizes:
-        mask = torch.ones((seq_len, seq_len)).tril()
+        mask = torch.ones((seq_len, seq_len)).tril().bool()
         mask[:size, :size] = True
         masks.append(mask)
     return torch.stack(masks).unsqueeze(1)
@@ -74,6 +74,7 @@ def calculate_loss(
     # Loss function shouldn't be putting things on the device.
     loss = 0
     num_elements = 0
+    num_completed = 0
     for idx, target in enumerate(targets):
         target = target.to(device)
         num_elements += target.numel()
@@ -82,10 +83,11 @@ def calculate_loss(
 
         start = maze_size - 1
         predicted = full_prediction[start : start + target.shape[0]]
+        num_completed += (torch.argmax(predicted, dim=1) == target).all()
         loss += F.cross_entropy(predicted, target, reduction="none").sum()
 
     loss /= num_elements
-    return loss
+    return loss, num_completed / model_output.shape[0]
 
 
 def train(config, data_dir, wandb_run=None):
@@ -100,9 +102,13 @@ def train(config, data_dir, wandb_run=None):
     model = MazeTransformer(config).to(config["device"])
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
+    best_test_loss = 1e99
+    best_state_dict = None
+
     for epoch in range(config["num_epochs"]):
         cumulative_train_loss = cumulative_test_loss = 0
         num_train_batches = num_test_batches = 0
+        train_completion_rate = test_completion_rate = 0
 
         model.train()
         for batch in train_dataloader:
@@ -115,12 +121,13 @@ def train(config, data_dir, wandb_run=None):
 
             optimizer.zero_grad()
             model_out = model.forward(sequences, masks)
-            loss = calculate_loss(model_out, targets, sizes, device=config["device"])
+            loss, completion_rate = calculate_loss(model_out, targets, sizes, device=config["device"])
 
             loss.backward()
             optimizer.step()
 
             cumulative_train_loss += loss.item()
+            train_completion_rate += completion_rate
             num_train_batches += 1
 
         model.eval()
@@ -134,28 +141,55 @@ def train(config, data_dir, wandb_run=None):
                 masks = masks.to(config["device"])
 
                 model_out = model.forward(sequences, masks)
-                loss = calculate_loss(
+                loss, completion_rate = calculate_loss(
                     model_out, targets, sizes, device=config["device"]
                 )
 
                 cumulative_test_loss += loss.item()
+                test_completion_rate += completion_rate
                 num_test_batches += 1
 
         avg_train_loss = cumulative_train_loss / num_train_batches
         avg_test_loss = cumulative_test_loss / num_test_batches
+        avg_train_completion_rate = train_completion_rate / num_train_batches
+        avg_test_completion_rate = test_completion_rate / num_test_batches
+
+        if avg_test_loss < best_test_loss:
+            best_test_loss = avg_test_loss
+            best_state_dict = model.state_dict()
+
         print(
             f"Epoch {epoch + 1}: average train loss = {avg_train_loss}"
         )
         print(
             f"Epoch {epoch + 1}: average test loss = {avg_test_loss}"
         )
+        print(
+            f"Epoch {epoch + 1}: average train completion rate = {avg_train_completion_rate}"
+        )
+        print(
+            f"Epoch {epoch + 1}: average test completion rate = {avg_test_completion_rate}"
+        )
+        print("-" * 80)
+
 
         if wandb_run:
-            run.log({"avg_train_loss" : avg_train_loss, "avg_test_loss" : avg_test_loss})
+            run.log({
+                "avg_train_loss" : avg_train_loss,
+                "avg_test_loss" : avg_test_loss,
+                "avg_train_completion_rate" : avg_train_completion_rate,
+                "avg_test_completion_rate" : avg_test_completion_rate
+            })
 
     if not os.path.exists(config["output_dir"]):
         os.makedirs(config["output_dir"])
-    torch.save(model.state_dict(), os.path.join(config["output_dir"], config["name"]))
+
+    if not os.path.exists(os.path.join(config["output_dir"], config["name"])):
+        os.makedirs(os.path.join(config["output_dir"], config["name"]))
+
+    with open(os.path.join(config["output_dir"], "config.yaml"), "w") as f:
+        yaml.safe_dump(config, f)
+    torch.save(best_state_dict, os.path.join(config["output_dir"], config["name"], "model"))
 
 
 if __name__ == "__main__":

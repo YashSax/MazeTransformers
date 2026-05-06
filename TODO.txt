@@ -1,0 +1,1 @@
+Make the saving of the state dict output to a folder with the config saved in the same folder

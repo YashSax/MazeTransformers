@@ -3,22 +3,22 @@ project: "MazeSFT"
 name: "Initial"
 
 model:
-  name: "rotard"
+  name: "attention_fixed_longer"
   vocab_size: 10
   output_vocab_size: 5
-  d_model: 64
-  n_layers: 3
-  max_seq_len: 32
-  n_heads: 1
+  d_model: 128
+  n_layers: 5
+  max_seq_len: 50
+  n_heads: 4
   dropout: 0
-  batch_size: 256
-  num_epochs: 200
-  learning_rate: 0.000001
-  device: cuda
+  batch_size: 128
+  num_epochs: 100
+  learning_rate: 0.00005
+  device: mps
   output_dir: models/
 
 dataset:
-  size: 2
-  num_train: 2048
-  num_test: 32
+  size: 8
+  num_train: 4096
+  num_test: 1024
   output_dir: data
