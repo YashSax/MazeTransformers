@@ -1,1 +1,6 @@
-Make the saving of the state dict output to a folder with the config saved in the same folder
+ - Positional embedding should be 2d
+    - What if you still had the normal embeddings, but you also did a separate embedding for row_idx, col_idx and then added those in for the positional ones
+ - GRPO
+ - Dataset could be a mix of different sizes -> Positional embedding being 2d will help generalize here.
+ - Make the loss calculations more efficient
+ - Refactor a little -> We should probably store the dataset config in with the model as well -> but does that then mean that the train() function will have to get the full config? That feels odd
