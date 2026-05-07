@@ -4,3 +4,4 @@
  - Dataset could be a mix of different sizes -> Positional embedding being 2d will help generalize here.
  - Make the loss calculations more efficient
  - Refactor a little -> We should probably store the dataset config in with the model as well -> but does that then mean that the train() function will have to get the full config? That feels odd
+ - Build a nice visualizer for the maze
