@@ -92,18 +92,6 @@ def calculate_loss(
 
 
 def train(config, data_dir, wandb_run=None, save_every=5):
-    if not os.path.exists(config["output_dir"]):
-        os.makedirs(config["output_dir"])
-
-    if not os.path.exists(os.path.join(config["output_dir"], config["name"])):
-        os.makedirs(os.path.join(config["output_dir"], config["name"]))
-        os.makedirs(os.path.join(config["output_dir"], config["name"], "checkpoints"))
-
-    with open(
-        os.path.join(config["output_dir"], config["name"], "config.yaml"), "w"
-    ) as f:
-        yaml.safe_dump(config, f)
-
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
@@ -214,13 +202,26 @@ def train(config, data_dir, wandb_run=None, save_every=5):
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("-wl", "--wandb_log", action="store_true")
-    args.add_argument("--config", type=str, default="configs/config.yaml")
+    args.add_argument("-c", "--config", type=str, default="configs/config.yaml")
 
     args = args.parse_args()
     with open(args.config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    generate_dataset(**config["dataset"])
+    generate_dataset(config["dataset"])
+
+    model_config = config["model"]
+    if not os.path.exists(model_config["output_dir"]):
+        os.makedirs(model_config["output_dir"])
+
+    if not os.path.exists(os.path.join(model_config["output_dir"], model_config["name"])):
+        os.makedirs(os.path.join(model_config["output_dir"], model_config["name"]))
+        os.makedirs(os.path.join(model_config["output_dir"], model_config["name"], "checkpoints"))
+
+    with open(
+        os.path.join(model_config["output_dir"], model_config["name"], "config.yaml"), "w"
+    ) as f:
+        yaml.safe_dump(config, f)
 
     run = create_wandb_run(config) if args.wandb_log else None
     train(config["model"], config["dataset"]["output_dir"], run)
