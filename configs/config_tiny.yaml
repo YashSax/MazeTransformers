@@ -3,16 +3,16 @@ project: "MazeSFT"
 name: "Initial"
 
 model:
-  name: "tiny_man"
+  name: "tiny_man_minimal"
   vocab_size: 10
   output_vocab_size: 5
-  d_model: 32
+  d_model: 64
   n_layers: 3
-  max_seq_len: 64
-  n_heads: 1
-  dropout: 0
+  max_seq_len: 32
+  n_heads: 2
+  dropout: 0.1
   batch_size: 32
-  num_epochs: 150
+  num_epochs: 30
   learning_rate: 0.0001
   device: mps
   output_dir: models/
@@ -20,10 +20,6 @@ model:
 dataset:
   small:
     size: 4
-    num_train: 256
+    num_train: 1024
     num_test: 32
-  tiny:
-    size: 2
-    num_train: 32
-    num_test: 8
   output_dir: data

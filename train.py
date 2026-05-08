@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import json
 import os
 from typing import Any, Dict, Tuple
@@ -42,21 +43,23 @@ class MazeDataset(Dataset):
     def __getitem__(self, idx):
         maze = self.data[idx]["maze"]
         path = self.data[idx]["path"]
+        dataset_name = self.data[idx]["dataset_name"]
 
         tokenized, maze_token_size = tokenize(maze, path)
         tokenized = torch.tensor(tokenized)
         maze_token_size = torch.tensor(maze_token_size)
         target = tokenized[maze_token_size:]
-        return tokenized, target, maze_token_size
+        return tokenized, target, maze_token_size, dataset_name
 
 
 def maze_collate_fn(batch):
-    sequences, targets, maze_token_sizes = list(zip(*batch))
+    # All tensors in the batch need to be the same size -> pad to largest
+    sequences, targets, maze_token_sizes, dataset_names = list(zip(*batch))
     padded_sequences = pad_sequence(
         sequences, batch_first=True, padding_value=Tokens.TOKEN_PAD.value
     )
     padded_maze_token_sizes = torch.tensor(maze_token_sizes)
-    return padded_sequences, targets, padded_maze_token_sizes
+    return padded_sequences, targets, padded_maze_token_sizes, dataset_names
 
 
 def create_causal_mask(maze_sizes: Tensor, seq_len: int):
@@ -69,36 +72,43 @@ def create_causal_mask(maze_sizes: Tensor, seq_len: int):
 
 
 def calculate_loss(
-    model_output: Tensor, targets: Tensor, maze_sizes: Tuple[Tensor], device="mps"
-):  # TODO: check the math on this -> if I were to guess why learning isn't slow it's prob this
+    model_output: Tensor,
+    targets: Tensor,
+    maze_sizes: Tuple[Tensor],
+    dataset_names: Tuple[str],
+    device="mps"
+):
     # This is super inefficient, there should be a way for targets to be a padded Tensor
     # Loss function shouldn't be putting things on the device.
+    dataset_completion_cumulative = defaultdict(list)
     loss = 0
     num_elements = 0
-    num_completed = 0
     for idx, target in enumerate(targets):
         target = target.to(device)
         num_elements += target.numel()
         full_prediction = model_output[idx]
         maze_size = maze_sizes[idx]
+        dataset_name = dataset_names[idx]
 
         start = maze_size - 1
         predicted = full_prediction[start : start + target.shape[0]]
-        num_completed += (torch.argmax(predicted, dim=1) == target).all()
+        dataset_completion_cumulative[dataset_name].append((torch.argmax(predicted, dim=1) == target).all())
+
         loss += F.cross_entropy(predicted, target, reduction="none").sum()
 
     loss /= num_elements
-    return loss, num_completed / model_output.shape[0]
+
+    return loss, dataset_completion_cumulative
 
 
 def train(config, data_dir, wandb_run=None, save_every=5):
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
-        train_dataset, batch_size=32, shuffle=True, collate_fn=maze_collate_fn
+        train_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
     )
     test_dataloader = DataLoader(
-        test_dataset, batch_size=1, shuffle=True, collate_fn=maze_collate_fn
+        test_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
     )
     model = MazeTransformer(config).to(config["device"])
     torch.compile(model)
@@ -111,11 +121,12 @@ def train(config, data_dir, wandb_run=None, save_every=5):
     for epoch in range(config["num_epochs"]):
         cumulative_train_loss = cumulative_test_loss = 0
         num_train_batches = num_test_batches = 0
-        train_completion_rate = test_completion_rate = 0
+        train_completions = defaultdict(list)
+        test_completions = defaultdict(list)
 
         model.train()
         for batch in train_dataloader:
-            sequences, targets, sizes = batch
+            sequences, targets, sizes, dataset_names = batch
             seq_len = sequences.shape[1]
             masks = create_causal_mask(sizes, seq_len)
 
@@ -124,21 +135,23 @@ def train(config, data_dir, wandb_run=None, save_every=5):
 
             optimizer.zero_grad()
             model_out = model.forward(sequences, masks)
-            loss, completion_rate = calculate_loss(
-                model_out, targets, sizes, device=config["device"]
+            loss, batch_completion_cumulative = calculate_loss(
+                model_out, targets, sizes, dataset_names, device=config["device"]
             )
+
+            for dataset_name, completions in batch_completion_cumulative.items():
+                train_completions[dataset_name].extend(completions)
 
             loss.backward()
             optimizer.step()
 
             cumulative_train_loss += loss.item()
-            train_completion_rate += completion_rate
             num_train_batches += 1
 
         model.eval()
         with torch.no_grad():
             for batch in test_dataloader:
-                sequences, targets, sizes = batch
+                sequences, targets, sizes, dataset_names = batch
                 seq_len = sequences.shape[1]
                 masks = create_causal_mask(sizes, seq_len)
 
@@ -146,31 +159,34 @@ def train(config, data_dir, wandb_run=None, save_every=5):
                 masks = masks.to(config["device"])
 
                 model_out = model.forward(sequences, masks)
-                loss, completion_rate = calculate_loss(
-                    model_out, targets, sizes, device=config["device"]
+                loss, batch_completion_cumulative = calculate_loss(
+                    model_out, targets, sizes, dataset_names, device=config["device"]
                 )
 
+                for dataset_name, completions in batch_completion_cumulative.items():
+                    test_completions[dataset_name].extend(completions)
+
                 cumulative_test_loss += loss.item()
-                test_completion_rate += completion_rate
                 num_test_batches += 1
 
         avg_train_loss = cumulative_train_loss / num_train_batches
         avg_test_loss = cumulative_test_loss / num_test_batches
-        avg_train_completion_rate = train_completion_rate / num_train_batches
-        avg_test_completion_rate = test_completion_rate / num_test_batches
 
         if avg_test_loss < best_test_loss:
             best_test_loss = avg_test_loss
             best_state_dict = model.state_dict()
 
+        train_completion_rates = {f"{name}_train_completion" : sum(completed) / len(completed) for name, completed in train_completions.items()}
+        test_completion_rates = {f"{name}_test_completion" : sum(completed) / len(completed) for name, completed in test_completions.items()}
+
         print(f"Epoch {epoch + 1}: average train loss = {avg_train_loss}")
         print(f"Epoch {epoch + 1}: average test loss = {avg_test_loss}")
-        print(
-            f"Epoch {epoch + 1}: average train completion rate = {avg_train_completion_rate}"
-        )
-        print(
-            f"Epoch {epoch + 1}: average test completion rate = {avg_test_completion_rate}"
-        )
+        for ds_name, completion_rate in train_completion_rates.items():
+            print(f"Epoch {epoch + 1}: {ds_name} completion rate = {completion_rate}")
+
+        for ds_name, completion_rate in test_completion_rates.items():
+            print(f"Epoch {epoch + 1}: {ds_name} completion rate = {completion_rate}")
+
         print("-" * 80)
 
         if wandb_run:
@@ -178,8 +194,8 @@ def train(config, data_dir, wandb_run=None, save_every=5):
                 {
                     "avg_train_loss": avg_train_loss,
                     "avg_test_loss": avg_test_loss,
-                    "avg_train_completion_rate": avg_train_completion_rate,
-                    "avg_test_completion_rate": avg_test_completion_rate,
+                    **train_completion_rates,
+                    **test_completion_rates
                 }
             )
 
