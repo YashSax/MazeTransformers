@@ -102,7 +102,7 @@ class MazeTransformer(Module):
         return logits
 
     def generate(self, x: Tensor, max_tokens: int = 100) -> Tensor:
-        generated_tokens = torch.IntTensor()
+        generated_tokens = torch.IntTensor().to(self.device)
         original_size = x.shape[0]
         for i in range(max_tokens):
             all_tokens = torch.concat([x, generated_tokens])

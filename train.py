@@ -74,8 +74,8 @@ def create_causal_mask(maze_sizes: Tensor, seq_len: int):
 
 def calculate_loss(
     model_output: Tensor,
-    targets: Tensor,
-    maze_sizes: Tuple[Tensor],
+    targets: Tuple[Tensor],
+    maze_sizes: Tensor,
     dataset_names: Tuple[str],
     device="mps"
 ):
@@ -224,7 +224,7 @@ if __name__ == "__main__":
     with open(args.config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    generate_dataset(config["dataset"])
+    # generate_dataset(config["dataset"])
 
     model_config = config["model"]
     if not os.path.exists(model_config["output_dir"]):
