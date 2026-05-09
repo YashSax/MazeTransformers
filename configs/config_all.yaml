@@ -1,19 +1,19 @@
 entity: "whysax-agnetic-labs"
 project: "MazeSFT"
-name: "many_mazes_16"
+name: "eight_and_lower"
 
 model:
-  name: "first_try"
+  name: "original_go"
   vocab_size: 10
   output_vocab_size: 5
   d_model: 256
   n_layers: 10
-  max_seq_len: 128
+  max_seq_len: 2048
   n_heads: 4
   dropout: 0
-  batch_size: 128
-  num_epochs: 200
-  learning_rate: 0.00005
+  batch_size: 64
+  num_epochs: 50
+  learning_rate: 0.0002
   device: cuda
   output_dir: models/
 
@@ -24,26 +24,26 @@ dataset:
     num_test: 1024
   seven:
     size: 7
-    num_train: 8192
-    num_test: 1024
-  six:
-    size: 6
     num_train: 4096
     num_test: 512
+  six:
+    size: 6
+    num_train: 2048
+    num_test: 256
   five:
     size: 5
     num_train: 1024
-    num_test: 512
+    num_test: 128
   four:
     size: 4
-    num_train: 64
-    num_test: 32
+    num_train: 512
+    num_test: 64
   three:
     size: 3
-    num_train: 64
+    num_train: 256
     num_test: 32
   two:
     size: 2
-    num_train: 64
-    num_test: 32
+    num_train: 128
+    num_test: 16
   output_dir: data

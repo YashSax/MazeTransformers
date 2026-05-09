@@ -17,6 +17,7 @@ from generate_dataset import generate_dataset
 from model import MazeTransformer
 from tokenizer import Tokens, tokenize
 
+from tqdm import tqdm
 
 def create_wandb_run(config: Dict):
     return wandb.init(
@@ -125,11 +126,10 @@ def train(config, data_dir, wandb_run=None, save_every=5):
         test_completions = defaultdict(list)
 
         model.train()
-        for batch in train_dataloader:
+        for batch in tqdm(train_dataloader):
             sequences, targets, sizes, dataset_names = batch
             seq_len = sequences.shape[1]
             masks = create_causal_mask(sizes, seq_len)
-
             sequences = sequences.to(config["device"])
             masks = masks.to(config["device"])
 
@@ -199,7 +199,7 @@ def train(config, data_dir, wandb_run=None, save_every=5):
                 }
             )
 
-        if epoch + 1 % 5 == 0:
+        if epoch + 1 % save_every == 0:
             torch.save(
                 best_state_dict,
                 os.path.join(

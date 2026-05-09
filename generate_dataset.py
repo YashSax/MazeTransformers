@@ -10,8 +10,8 @@ from tqdm import tqdm
 from maze import convert_to_directions, generate_maze, solve_maze
 
 
-def generate_mazes(dataset_name: str, size: int, num_mazes: int, output_dir: str):
-    for i in tqdm(range(num_mazes)):
+def generate_mazes(dataset_name: str, size: int, num_mazes: int, output_dir: str, start_idx=0):
+    for i in tqdm(range(start_idx, start_idx + num_mazes)):
         path = None
         while path is None:
             maze = generate_maze(size=size)
@@ -31,6 +31,7 @@ def generate_dataset(dataset_config: Dict):
     os.makedirs(dataset_config["output_dir"])
 
     splits = ["train", "test"]
+    split_idxs = {split : 0 for split in splits}
     for split in splits:
         os.makedirs(os.path.join(dataset_config["output_dir"], split))
 
@@ -44,8 +45,10 @@ def generate_dataset(dataset_config: Dict):
                 dataset_name=dataset_name,
                 size=dataset_info["size"],
                 num_mazes=dataset_info[f"num_{split}"],
-                output_dir=os.path.join(dataset_config["output_dir"], split)
+                output_dir=os.path.join(dataset_config["output_dir"], split),
+                start_idx=split_idxs[split]
             )
+            split_idxs[split] += dataset_info[f"num_{split}"]
 
 
 if __name__ == "__main__":
