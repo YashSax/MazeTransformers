@@ -1,4 +1,14 @@
  - GRPO
- - Make the loss calculations more efficient
- - Refactor a little -> We should probably store the dataset config in with the model as well -> but does that then mean that the train() function will have to get the full config? That feels odd
+   - Create the reward function for the maze
+   - Write the training loop:
+      - Sample N number of paths, storing the output probs
+         - For this I think we're going to need to write a batched inference? But with gradients
+      - Calculate the rewards over all of them
+      - Calculate the importance sampling ratio using the current model + saved output probs
+      - Calculate the loss
+      - loss.backward()
+
+ - Positional embedding should be 2d
+    - What if you still had the normal embeddings, but you also did a separate embedding for row_idx, col_idx and then added those in for the positional ones
  - Build a nice visualizer for the maze
+ - Make the loss calculations more efficient
