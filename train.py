@@ -219,12 +219,14 @@ if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("-wl", "--wandb_log", action="store_true")
     args.add_argument("-c", "--config", type=str, default="configs/config.yaml")
+    args.add_argument("-nd", "--no_data_generation", action="store_true")
 
     args = args.parse_args()
     with open(args.config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    # generate_dataset(config["dataset"])
+    if not args.no_data_generation:
+        generate_dataset(config["dataset"])
 
     model_config = config["model"]
     if not os.path.exists(model_config["output_dir"]):

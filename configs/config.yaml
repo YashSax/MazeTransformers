@@ -3,12 +3,12 @@ project: "MazeSFT"
 name: "many_mazes_16"
 
 model:
-  name: "first_try"
+  name: "more_16"
   vocab_size: 10
   output_vocab_size: 5
   d_model: 256
   n_layers: 10
-  max_seq_len: 128
+  max_seq_len: 512
   n_heads: 4
   dropout: 0
   batch_size: 128
@@ -18,6 +18,10 @@ model:
   output_dir: models/
 
 dataset:
+  sixteen:
+    size: 16
+    num_train: 32768
+    num_test: 4096
   eight:
     size: 8
     num_train: 8192
