@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Literal
 
 import torch
 import torch.nn.functional as F
@@ -101,7 +101,8 @@ class MazeTransformer(Module):
         logits = self.head(x)
         return logits
 
-    def generate(self, x: Tensor, max_tokens: int = 100) -> Tensor:
+    def generate(self, x: Tensor, max_tokens: int = 100, method=Literal["sample", "greedy"], temperature=1.0) -> Tensor:
+        # Note: need to implement temperature for GRPO
         generated_tokens = torch.IntTensor().to(self.device)
         original_size = x.shape[0]
         with torch.no_grad():
@@ -116,7 +117,14 @@ class MazeTransformer(Module):
                     all_tokens.unsqueeze(0), causal_mask.unsqueeze(0).to(self.device)
                 )
 
-                prediction = torch.argmax(model_out.squeeze()[-1])
+                if method == "greedy":
+                    prediction = torch.argmax(model_out.squeeze()[-1])
+                else:
+                    logits = model_out.squeeze()[-1]
+                    updated_logits = logits / temperature
+                    token_probs = torch.softmax(updated_logits, dim=0)
+                    prediction = torch.multinomial(token_probs, 1)[0]
+
                 generated_tokens = torch.concat([generated_tokens, prediction.unsqueeze(0)])
                 if prediction.item() == Tokens.TOKEN_EOS.value:
                     break
@@ -124,22 +132,8 @@ class MazeTransformer(Module):
         return generated_tokens
 
     def generate_rollouts(self, x: Tensor, max_tokens: int = 100) -> Tensor:
-        generated_tokens = torch.IntTensor().to(self.device)
-        original_size = x.shape[0]
-        for i in range(max_tokens):
-            all_tokens = torch.concat([x, generated_tokens])
-            causal_mask = (
-                torch.ones((all_tokens.shape[0], all_tokens.shape[0])).tril().bool()
-            )
-            causal_mask[:original_size, :original_size] = True
-
-            model_out = self.forward(
-                all_tokens.unsqueeze(0), causal_mask.unsqueeze(0).to(self.device)
-            )
-
-            prediction = torch.argmax(model_out.squeeze()[-1])
-            generated_tokens = torch.concat([generated_tokens, prediction.unsqueeze(0)])
-            if prediction.item() == Tokens.TOKEN_EOS.value:
-                break
-
-        return generated_tokens
+        # Now that I think about it, I don't actually know too much about
+        # how batched generation works efficiently here. There are multiple
+        # sequences, all of different lengths, and we'll need to manage the
+        # causal masks for all of them.
+        pass

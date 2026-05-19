@@ -102,7 +102,7 @@ def calculate_loss(
     return loss, dataset_completion_cumulative
 
 
-def train(config, data_dir, wandb_run=None, save_every=5):
+def run_supervised_learning(model, model_name, config, data_dir, wandb_run=None, save_every=5):
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
@@ -111,8 +111,6 @@ def train(config, data_dir, wandb_run=None, save_every=5):
     test_dataloader = DataLoader(
         test_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
     )
-    model = MazeTransformer(config).to(config["device"])
-    torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
@@ -211,7 +209,7 @@ def train(config, data_dir, wandb_run=None, save_every=5):
             )
 
     torch.save(
-        best_state_dict, os.path.join(config["output_dir"], config["name"], "model")
+        best_state_dict, os.path.join(config["output_dir"], model_name, "model")
     )
 
 
@@ -226,20 +224,23 @@ if __name__ == "__main__":
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     if not args.no_data_generation:
-        generate_dataset(config["dataset"])
+        generate_dataset(config["dataset"]["supervised"])
 
     model_config = config["model"]
-    if not os.path.exists(model_config["output_dir"]):
-        os.makedirs(model_config["output_dir"])
+    training_config = config["training"]
+    if not os.path.exists(training_config["supervised"]["output_dir"]):
+        os.makedirs(training_config["supervised"]["output_dir"])
 
-    if not os.path.exists(os.path.join(model_config["output_dir"], model_config["name"])):
-        os.makedirs(os.path.join(model_config["output_dir"], model_config["name"]))
-        os.makedirs(os.path.join(model_config["output_dir"], model_config["name"], "checkpoints"))
+    model_output_dir = os.path.join(training_config["supervised"]["output_dir"], model_config["name"])
+    if not os.path.exists(model_output_dir):
+        os.makedirs(model_output_dir)
+        os.makedirs(os.path.join(model_output_dir, "checkpoints"))
 
-    with open(
-        os.path.join(model_config["output_dir"], model_config["name"], "config.yaml"), "w"
-    ) as f:
+    with open(os.path.join(model_output_dir, "config.yaml"), "w") as f:
         yaml.safe_dump(config, f)
 
+    model = MazeTransformer(config["model"]).to(config["model"]["device"])
+    torch.compile(model)
+
     run = create_wandb_run(config) if args.wandb_log else None
-    train(config["model"], config["dataset"]["output_dir"], run)
+    run_supervised_learning(model, model_config["name"], config["training"]["supervised"], config["dataset"]["supervised"]["output_dir"], run)

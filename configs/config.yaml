@@ -3,7 +3,7 @@ project: "MazeSFT"
 name: "many_mazes_16"
 
 model:
-  name: "more_16"
+  name: "ex_2"
   vocab_size: 10
   output_vocab_size: 5
   d_model: 256
@@ -11,43 +11,32 @@ model:
   max_seq_len: 512
   n_heads: 4
   dropout: 0
-  batch_size: 128
-  num_epochs: 200
-  learning_rate: 0.00005
-  device: cuda
-  output_dir: models/
+  device: mps
+
+training:
+  supervised:
+    batch_size: 128
+    num_epochs: 1
+    learning_rate: 0.00005
+    output_dir: models/
+    device: mps
+  grpo:
+    batch_size: 8
+    group_size: 8
+    kl_penalty: 0.02
+    eps: 0.01
+    num_epochs: 10
+    baseline_update_frequency: 1
 
 dataset:
-  sixteen:
-    size: 16
-    num_train: 32768
-    num_test: 4096
-  eight:
-    size: 8
-    num_train: 8192
-    num_test: 1024
-  seven:
-    size: 7
-    num_train: 8192
-    num_test: 1024
-  six:
-    size: 6
-    num_train: 4096
-    num_test: 512
-  five:
-    size: 5
-    num_train: 1024
-    num_test: 512
-  four:
-    size: 4
-    num_train: 64
-    num_test: 32
-  three:
-    size: 3
-    num_train: 64
-    num_test: 32
-  two:
-    size: 2
-    num_train: 64
-    num_test: 32
-  output_dir: data
+  supervised:
+    sixteen:
+      size: 16
+      num_train: 512
+      num_test: 512
+    output_dir: data
+  grpo:
+    four:
+      size: 4
+      num_train: 64
+      num_test: 32
