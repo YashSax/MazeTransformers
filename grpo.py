@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from collections import defaultdict
 from tqdm import tqdm
+from copy import deepcopy
+
 
 def reward(predicted_path: Tensor, actual_path: Tensor):
     # Let's start off with the simplest reward, which is just +1 if
@@ -28,6 +30,7 @@ def reward(predicted_path: Tensor, actual_path: Tensor):
             return idx
     return min_path_length + (predicted_path.shape[0] == actual_path.shape[0])
 
+
 def grpo(model, model_name, config, data_dir, wandb_run=None, save_every=5):
     # For epoch in epochs
     # If epoch % update_baseline_every == 0: update the baseline model
@@ -38,21 +41,26 @@ def grpo(model, model_name, config, data_dir, wandb_run=None, save_every=5):
     # Calculate advantages
     # Calculate GRPO loss -> loss.backward()
 
-    # train_dataset = MazeDataset(os.path.join(data_dir, "train"))
-    # test_dataset = MazeDataset(os.path.join(data_dir, "test"))
-    # train_dataloader = DataLoader(
-    #     train_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
-    # )
-    # test_dataloader = DataLoader(
-    #     test_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
-    # )
+    train_dataset = MazeDataset(os.path.join(data_dir, "train"))
+    test_dataset = MazeDataset(os.path.join(data_dir, "test"))
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=config["batch_size"],
+        shuffle=True,
+        collate_fn=maze_collate_fn,
+    )
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=config["batch_size"],
+        shuffle=True,
+        collate_fn=maze_collate_fn,
+    )
 
-    # optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
+    optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
     best_test_loss = 1e99
     best_state_dict = None
-    baseline_model = model.copy()
-    assert False
+    baseline_model = deepcopy(model)
     for epoch in range(config["num_epochs"]):
         cumulative_train_loss = cumulative_test_loss = 0
         num_train_batches = num_test_batches = 0
@@ -65,6 +73,7 @@ def grpo(model, model_name, config, data_dir, wandb_run=None, save_every=5):
         model.train()
         for batch in tqdm(train_dataloader):
             pass
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

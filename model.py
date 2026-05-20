@@ -1,13 +1,21 @@
 from typing import Dict, Optional, Literal
-
+import copy
 import torch
 import torch.nn.functional as F
-from torch import Tensor
-from torch.nn import (Dropout, Embedding, LayerNorm, Linear, Module,
-                      ModuleList, Sequential)
+from torch import IntTensor, Tensor
+from torch.nn import (
+    Dropout,
+    Embedding,
+    LayerNorm,
+    Linear,
+    Module,
+    ModuleList,
+    Sequential,
+)
 from torch.nn.modules.activation import GELU
 
 from tokenizer import Tokens
+from training_utils import create_causal_mask
 
 
 class MultiHeadAttention(Module):
@@ -101,7 +109,13 @@ class MazeTransformer(Module):
         logits = self.head(x)
         return logits
 
-    def generate(self, x: Tensor, max_tokens: int = 100, method=Literal["sample", "greedy"], temperature=1.0) -> Tensor:
+    def generate(
+        self,
+        x: Tensor,
+        max_tokens: int = 100,
+        method: Literal["sample", "greedy"] = "greedy",
+        temperature=1.0,
+    ) -> Tensor:
         # Note: need to implement temperature for GRPO
         generated_tokens = torch.IntTensor().to(self.device)
         original_size = x.shape[0]
@@ -125,15 +139,31 @@ class MazeTransformer(Module):
                     token_probs = torch.softmax(updated_logits, dim=0)
                     prediction = torch.multinomial(token_probs, 1)[0]
 
-                generated_tokens = torch.concat([generated_tokens, prediction.unsqueeze(0)])
+                generated_tokens = torch.concat(
+                    [generated_tokens, prediction.unsqueeze(0)]
+                )
                 if prediction.item() == Tokens.TOKEN_EOS.value:
                     break
 
         return generated_tokens
 
-    def generate_rollouts(self, x: Tensor, max_tokens: int = 100) -> Tensor:
-        # Now that I think about it, I don't actually know too much about
-        # how batched generation works efficiently here. There are multiple
-        # sequences, all of different lengths, and we'll need to manage the
-        # causal masks for all of them.
-        pass
+    def generate_rollouts(
+        self, x: Tensor,
+        sizes: IntTensor,
+        max_tokens: int = 100,
+        method: Literal["sample", "greedy"] = "greedy"
+    ) -> Tensor:
+        # x is of shape (B, seq_len)
+        completed_rollouts = copy.deepcopy(x)
+        for idx in range(max_tokens):
+            batch_size, seq_len = x.shape
+            causal_masks = create_causal_mask(sizes, seq_len)
+            model_out = self.forward(
+                x.to(self.device), causal_masks.to(self.device)
+            )
+
+            logits = model_out[torch.arange(batch_size), sizes + idx - 1]
+            print(logits.shape)
+            predicted = torch.argmax(logits, dim=1)
+            print(predicted.shape)
+            assert False

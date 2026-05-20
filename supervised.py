@@ -18,6 +18,8 @@ from model import MazeTransformer
 from tokenizer import Tokens, tokenize
 
 from tqdm import tqdm
+from training_utils import create_causal_mask
+
 
 def create_wandb_run(config: Dict):
     return wandb.init(
@@ -63,21 +65,12 @@ def maze_collate_fn(batch):
     return padded_sequences, targets, padded_maze_token_sizes, dataset_names
 
 
-def create_causal_mask(maze_sizes: Tensor, seq_len: int):
-    masks = []
-    for size in maze_sizes:
-        mask = torch.ones((seq_len, seq_len)).tril().bool()
-        mask[:size, :size] = True
-        masks.append(mask)
-    return torch.stack(masks).unsqueeze(1)
-
-
 def calculate_loss(
     model_output: Tensor,
     targets: Tuple[Tensor],
     maze_sizes: Tensor,
     dataset_names: Tuple[str],
-    device="mps"
+    device="mps",
 ):
     # This is super inefficient, there should be a way for targets to be a padded Tensor
     # Loss function shouldn't be putting things on the device.
@@ -93,7 +86,9 @@ def calculate_loss(
 
         start = maze_size - 1
         predicted = full_prediction[start : start + target.shape[0]]
-        dataset_completion_cumulative[dataset_name].append((torch.argmax(predicted, dim=1) == target).all())
+        dataset_completion_cumulative[dataset_name].append(
+            (torch.argmax(predicted, dim=1) == target).all()
+        )
 
         loss += F.cross_entropy(predicted, target, reduction="none").sum()
 
@@ -102,14 +97,22 @@ def calculate_loss(
     return loss, dataset_completion_cumulative
 
 
-def run_supervised_learning(model, model_name, config, data_dir, wandb_run=None, save_every=5):
+def run_supervised_learning(
+    model, model_name, config, data_dir, wandb_run=None, save_every=5
+):
     train_dataset = MazeDataset(os.path.join(data_dir, "train"))
     test_dataset = MazeDataset(os.path.join(data_dir, "test"))
     train_dataloader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
+        train_dataset,
+        batch_size=config["batch_size"],
+        shuffle=True,
+        collate_fn=maze_collate_fn,
     )
     test_dataloader = DataLoader(
-        test_dataset, batch_size=config["batch_size"], shuffle=True, collate_fn=maze_collate_fn
+        test_dataset,
+        batch_size=config["batch_size"],
+        shuffle=True,
+        collate_fn=maze_collate_fn,
     )
 
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
@@ -174,8 +177,14 @@ def run_supervised_learning(model, model_name, config, data_dir, wandb_run=None,
             best_test_loss = avg_test_loss
             best_state_dict = model.state_dict()
 
-        train_completion_rates = {f"{name}_train_completion" : sum(completed) / len(completed) for name, completed in train_completions.items()}
-        test_completion_rates = {f"{name}_test_completion" : sum(completed) / len(completed) for name, completed in test_completions.items()}
+        train_completion_rates = {
+            f"{name}_train_completion": sum(completed) / len(completed)
+            for name, completed in train_completions.items()
+        }
+        test_completion_rates = {
+            f"{name}_test_completion": sum(completed) / len(completed)
+            for name, completed in test_completions.items()
+        }
 
         print(f"Epoch {epoch + 1}: average train loss = {avg_train_loss}")
         print(f"Epoch {epoch + 1}: average test loss = {avg_test_loss}")
@@ -193,7 +202,7 @@ def run_supervised_learning(model, model_name, config, data_dir, wandb_run=None,
                     "avg_train_loss": avg_train_loss,
                     "avg_test_loss": avg_test_loss,
                     **train_completion_rates,
-                    **test_completion_rates
+                    **test_completion_rates,
                 }
             )
 
@@ -208,9 +217,7 @@ def run_supervised_learning(model, model_name, config, data_dir, wandb_run=None,
                 ),
             )
 
-    torch.save(
-        best_state_dict, os.path.join(config["output_dir"], model_name, "model")
-    )
+    torch.save(best_state_dict, os.path.join(config["output_dir"], model_name, "model"))
 
 
 if __name__ == "__main__":
@@ -231,7 +238,9 @@ if __name__ == "__main__":
     if not os.path.exists(training_config["supervised"]["output_dir"]):
         os.makedirs(training_config["supervised"]["output_dir"])
 
-    model_output_dir = os.path.join(training_config["supervised"]["output_dir"], model_config["name"])
+    model_output_dir = os.path.join(
+        training_config["supervised"]["output_dir"], model_config["name"]
+    )
     if not os.path.exists(model_output_dir):
         os.makedirs(model_output_dir)
         os.makedirs(os.path.join(model_output_dir, "checkpoints"))
@@ -243,4 +252,10 @@ if __name__ == "__main__":
     torch.compile(model)
 
     run = create_wandb_run(config) if args.wandb_log else None
-    run_supervised_learning(model, model_config["name"], config["training"]["supervised"], config["dataset"]["supervised"]["output_dir"], run)
+    run_supervised_learning(
+        model,
+        model_config["name"],
+        config["training"]["supervised"],
+        config["dataset"]["supervised"]["output_dir"],
+        run,
+    )
