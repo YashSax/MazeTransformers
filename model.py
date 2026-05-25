@@ -1,5 +1,5 @@
-from typing import Dict, Optional, Literal
-import copy
+from typing import Dict, Optional, Literal, List
+from copy import deepcopy
 import torch
 import torch.nn.functional as F
 from torch import IntTensor, Tensor
@@ -16,6 +16,7 @@ from torch.nn.modules.activation import GELU
 
 from tokenizer import Tokens
 from training_utils import create_causal_mask
+from torch.nn.utils.rnn import pad_sequence
 
 
 class MultiHeadAttention(Module):
@@ -109,10 +110,22 @@ class MazeTransformer(Module):
         logits = self.head(x)
         return logits
 
+    def _sample_with_temperature(
+        self,
+        logits: Tensor,
+        temperature: float
+    ):
+        # logits is of shape (B, output_vocab_size)
+        assert temperature >= 0, "Temperature must be greater than 0!"
+        if temperature == 0:
+            return torch.argmax(logits, dim=1)
+        updated_logits = logits / temperature
+        token_probs = torch.softmax(updated_logits, dim=0)
+        return torch.multinomial(token_probs, 1)[0]
+
     def generate(
         self,
         x: Tensor,
-        max_tokens: int = 100,
         method: Literal["sample", "greedy"] = "greedy",
         temperature=1.0,
     ) -> Tensor:
@@ -120,7 +133,7 @@ class MazeTransformer(Module):
         generated_tokens = torch.IntTensor().to(self.device)
         original_size = x.shape[0]
         with torch.no_grad():
-            for i in range(max_tokens):
+            for _ in range(self.max_seq_len):
                 all_tokens = torch.concat([x, generated_tokens])
                 causal_mask = (
                     torch.ones((all_tokens.shape[0], all_tokens.shape[0])).tril().bool()
@@ -131,13 +144,8 @@ class MazeTransformer(Module):
                     all_tokens.unsqueeze(0), causal_mask.unsqueeze(0).to(self.device)
                 )
 
-                if method == "greedy":
-                    prediction = torch.argmax(model_out.squeeze()[-1])
-                else:
-                    logits = model_out.squeeze()[-1]
-                    updated_logits = logits / temperature
-                    token_probs = torch.softmax(updated_logits, dim=0)
-                    prediction = torch.multinomial(token_probs, 1)[0]
+                logits = model_out.squeeze()[-1]
+                prediction = self._sample_with_temperature(logits, 0 if method == "greedy" else temperature)
 
                 generated_tokens = torch.concat(
                     [generated_tokens, prediction.unsqueeze(0)]
@@ -148,22 +156,46 @@ class MazeTransformer(Module):
         return generated_tokens
 
     def generate_rollouts(
-        self, x: Tensor,
+        self,
+        x: Tensor,
         sizes: IntTensor,
-        max_tokens: int = 100,
-        method: Literal["sample", "greedy"] = "greedy"
+        method: Literal["sample", "greedy"] = "greedy",
+        temperature: float = 1.0
     ) -> Tensor:
-        # x is of shape (B, seq_len)
-        completed_rollouts = copy.deepcopy(x)
-        for idx in range(max_tokens):
-            batch_size, seq_len = x.shape
+        # This is definitely not optimized, but I don't want to spend too much
+        # time working on the inference logic here.
+        # Improvements:
+        #  - We only run max_seq_len - sizes.max() iterations. This means that
+        #    if there's a sequence that fits that needs more iterations it'll
+        #    stop early.
+        #  - KV cache
+
+        predictions = [[] for _ in range(x.shape[0])]
+        all_logits = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
+
+        rollout_results = deepcopy(x)
+        finished = torch.zeros((1, rollout_results.shape[0])).bool().to(self.device)
+        for idx in range(self.max_seq_len - sizes.max()):
+            batch_size, seq_len = rollout_results.shape
             causal_masks = create_causal_mask(sizes, seq_len)
             model_out = self.forward(
-                x.to(self.device), causal_masks.to(self.device)
+                rollout_results.to(self.device), causal_masks.to(self.device)
             )
 
             logits = model_out[torch.arange(batch_size), sizes + idx - 1]
-            print(logits.shape)
-            predicted = torch.argmax(logits, dim=1)
-            print(predicted.shape)
-            assert False
+            predicted = self._sample_with_temperature(logits, 0 if method == "greedy" else temperature)
+            for i in range(predicted.shape[0]):
+                if finished[0, i].item():
+                    continue
+                predictions[i].append(predicted[i].item())
+                all_logits[i] = torch.cat([all_logits[i], logits[i].unsqueeze(0)])
+
+            zeros = torch.zeros(batch_size, 1).to(self.device).long()
+            rollout_results = torch.cat([rollout_results, zeros], dim=1)
+            rollout_results[torch.arange(batch_size), sizes + idx] = predicted
+
+            finished = torch.logical_or(finished, predicted == Tokens.TOKEN_EOS.value)
+            if finished.sum().item() == batch_size:
+                break
+
+        return predictions, all_logits
