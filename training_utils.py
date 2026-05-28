@@ -1,6 +1,8 @@
 import torch
 from torch import Tensor
 from tokenizer import Tokens
+from typing import Dict
+import wandb
 
 def create_causal_mask(maze_sizes: Tensor, seq_len: int):
     masks = []
@@ -18,3 +20,11 @@ def remove_solution_from_sequences(sequences: Tensor, sizes: Tensor) -> Tensor:
     sequences[mask] = Tokens.TOKEN_PAD.value
     sequences = sequences[:, :sizes.max()]
     return sequences
+
+def create_wandb_run(config: Dict):
+    return wandb.init(
+        entity=config["entity"],
+        project=config["project"],
+        name=f"run: {config["name"]}, model: {config["model"]["name"]}",
+        config=config,
+    )

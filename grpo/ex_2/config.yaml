@@ -1,0 +1,43 @@
+dataset:
+  grpo:
+    four:
+      num_test: 32
+      num_train: 64
+      size: 4
+    output_dir: grpo_data
+  supervised:
+    output_dir: data
+    sixteen:
+      num_test: 512
+      num_train: 512
+      size: 16
+entity: whysax-agnetic-labs
+model:
+  d_model: 256
+  device: cuda
+  dropout: 0
+  max_seq_len: 512
+  n_heads: 4
+  n_layers: 10
+  name: ex_2
+  output_vocab_size: 5
+  vocab_size: 10
+name: many_mazes_16
+project: MazeSFT
+training:
+  grpo:
+    baseline_update_frequency: 1
+    batch_size: 8
+    device: cuda
+    eps: 0.01
+    group_size: 8
+    kl_penalty: 0.02
+    learning_rate: 5.0e-05
+    num_epochs: 10
+    output_dir: grpo/
+  supervised:
+    batch_size: 128
+    device: mps
+    learning_rate: 5.0e-05
+    num_epochs: 1
+    output_dir: supervised/

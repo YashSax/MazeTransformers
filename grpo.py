@@ -4,13 +4,15 @@ from torch import Tensor
 from typing import Dict
 from model import MazeTransformer
 import yaml
-from supervised import MazeDataset
+from supervised import MazeDataset, maze_collate_fn
 import os
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from collections import defaultdict
 from tqdm import tqdm
 from copy import deepcopy
+from generate_dataset import generate_dataset
+from training_utils import create_wandb_run, remove_solution_from_sequences
 
 
 def reward(predicted_path: Tensor, actual_path: Tensor):
@@ -31,7 +33,7 @@ def reward(predicted_path: Tensor, actual_path: Tensor):
     return min_path_length + (predicted_path.shape[0] == actual_path.shape[0])
 
 
-def grpo(model, model_name, config, data_dir, wandb_run=None, save_every=5):
+def run_grpo(model, model_name, config, data_dir, wandb_run=None, update_every=1):
     # For epoch in epochs
     # If epoch % update_baseline_every == 0: update the baseline model
     # For each batch:
@@ -62,17 +64,16 @@ def grpo(model, model_name, config, data_dir, wandb_run=None, save_every=5):
     best_state_dict = None
     baseline_model = deepcopy(model)
     for epoch in range(config["num_epochs"]):
-        cumulative_train_loss = cumulative_test_loss = 0
+        cumulative_train_reward = cumulative_test_reward = 0
         num_train_batches = num_test_batches = 0
-        train_completions = defaultdict(list)
-        test_completions = defaultdict(list)
-
-        if epoch % config["baseline_update_frequency"] == 0:
-            baseline_model = model.copy()
 
         model.train()
         for batch in tqdm(train_dataloader):
-            pass
+            sequences, _, sizes, dataset_names = batch
+            input_sequences = remove_trai
+
+            print(sequences.shape) # Should be (B, seq_len)
+            assert False
 
 
 if __name__ == "__main__":
@@ -85,5 +86,34 @@ if __name__ == "__main__":
     with open(args.config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
+    TRAINING_MODE = "grpo"
+
+    if not args.no_data_generation:
+        generate_dataset(config["dataset"][TRAINING_MODE])
+
+    model_config = config["model"]
+    training_config = config["training"]
+    if not os.path.exists(training_config[TRAINING_MODE]["output_dir"]):
+        os.makedirs(training_config[TRAINING_MODE]["output_dir"])
+
+    model_output_dir = os.path.join(
+        training_config[TRAINING_MODE]["output_dir"], model_config["name"]
+    )
+    if not os.path.exists(model_output_dir):
+        os.makedirs(model_output_dir)
+        os.makedirs(os.path.join(model_output_dir, "checkpoints"))
+
+    with open(os.path.join(model_output_dir, "config.yaml"), "w") as f:
+        yaml.safe_dump(config, f)
+
     model = MazeTransformer(config["model"]).to(config["model"]["device"])
-    grpo(model, None, config, None)
+    torch.compile(model)
+
+    run = create_wandb_run(config) if args.wandb_log else None
+    run_grpo(
+        model,
+        model_config["name"],
+        config["training"][TRAINING_MODE],
+        config["dataset"][TRAINING_MODE]["output_dir"],
+        run,
+    )

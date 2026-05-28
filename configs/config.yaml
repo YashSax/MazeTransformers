@@ -11,22 +11,26 @@ model:
   max_seq_len: 512
   n_heads: 4
   dropout: 0
-  device: mps
+  device: cuda
 
 training:
   supervised:
     batch_size: 128
     num_epochs: 1
     learning_rate: 0.00005
-    output_dir: models/
+    output_dir: supervised/
     device: mps
   grpo:
     batch_size: 8
     group_size: 8
     kl_penalty: 0.02
     eps: 0.01
+    learning_rate: 0.00005
     num_epochs: 10
     baseline_update_frequency: 1
+    output_dir: grpo/
+    device: cuda
+
 
 dataset:
   supervised:
@@ -40,3 +44,4 @@ dataset:
       size: 4
       num_train: 64
       num_test: 32
+    output_dir: grpo_data
