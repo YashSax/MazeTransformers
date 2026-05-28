@@ -1,21 +1,23 @@
 import argparse
-import torch
-from torch import Tensor
-from typing import Dict
-from model import MazeTransformer
-import yaml
-from supervised import MazeDataset, maze_collate_fn
 import os
-from torch.utils.data import DataLoader
-from torch.optim import AdamW
 from collections import defaultdict
-from tqdm import tqdm
 from copy import deepcopy
+from typing import Dict, List
+
+import torch
+import yaml
+from torch import Tensor
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
 from generate_dataset import generate_dataset
+from model import MazeTransformer
+from supervised import MazeDataset, maze_collate_fn
 from training_utils import create_wandb_run, remove_solution_from_sequences
 
 
-def reward(predicted_path: Tensor, actual_path: Tensor):
+def calculate_reward(predicted_path: Tensor, actual_path: Tensor):
     # Let's start off with the simplest reward, which is just +1 if
     # the predicted direction matches the correct direction.
     # Eventually we can do things like offer partial rewards for
@@ -33,7 +35,39 @@ def reward(predicted_path: Tensor, actual_path: Tensor):
     return min_path_length + (predicted_path.shape[0] == actual_path.shape[0])
 
 
-def run_grpo(model, model_name, config, data_dir, wandb_run=None, update_every=1):
+def calculate_advantages(
+    predicted_paths: List[Tensor],
+    actual_paths: List[Tensor],
+    group_size: int,
+    batch_size: int,
+):
+    base = torch.arange(group_size).repeat(batch_size, 1) * batch_size
+    offset = torch.arange(batch_size).reshape(batch_size, 1)
+    group_row_idxs = base + offset
+
+    rewards = torch.Tensor(
+        [
+            calculate_reward(pred, actual)
+            for pred, actual in zip(predicted_paths, actual_paths)
+        ]
+    )
+
+    group_mean_rewards = rewards[group_row_idxs].mean(dim=1).repeat(group_size)
+    advantages = rewards - group_mean_rewards
+    return advantages
+
+
+def calculate_importance_sampling_ratio(
+    predicted_paths: List[Tensor],
+    baseline_model: MazeTransformer,
+    predicted_logits: list[Tensor],
+):
+    pass
+
+
+def run_grpo(
+    model: MazeTransformer, model_name, config, data_dir, wandb_run=None, update_every=1
+):
     # For epoch in epochs
     # If epoch % update_baseline_every == 0: update the baseline model
     # For each batch:
@@ -60,8 +94,6 @@ def run_grpo(model, model_name, config, data_dir, wandb_run=None, update_every=1
 
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
-    best_test_loss = 1e99
-    best_state_dict = None
     baseline_model = deepcopy(model)
     for epoch in range(config["num_epochs"]):
         cumulative_train_reward = cumulative_test_reward = 0
@@ -69,10 +101,28 @@ def run_grpo(model, model_name, config, data_dir, wandb_run=None, update_every=1
 
         model.train()
         for batch in tqdm(train_dataloader):
-            sequences, _, sizes, dataset_names = batch
-            input_sequences = remove_trai
+            sequences, targets, sizes, dataset_names = batch
+            input_sequences = remove_solution_from_sequences(sequences, sizes)
+            input_sequences = input_sequences.to(config["device"])
+            duplicated_input_sequences = input_sequences.repeat(config["group_size"], 1)
+            duplicated_sizes = sizes.repeat(config["group_size"])
+            duplicated_targets = list(targets) * config["group_size"]
 
-            print(sequences.shape) # Should be (B, seq_len)
+            predictions, all_logits = model.generate_rollouts(
+                duplicated_input_sequences, duplicated_sizes, temperature=1
+            )
+            advantages = calculate_advantages(
+                predictions,
+                duplicated_targets,
+                config["group_size"],
+                config["batch_size"],
+            )
+
+            importance_sampling_ratio = calculate_importance_sampling_ratio(
+                predictions, baseline_model, all_logits
+            )
+
+            print(advantages)
             assert False
 
 

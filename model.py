@@ -1,22 +1,16 @@
-from typing import Dict, Optional, Literal, List
 from copy import deepcopy
+from typing import Dict, List, Literal, Optional, Tuple
+
 import torch
 import torch.nn.functional as F
 from torch import IntTensor, Tensor
-from torch.nn import (
-    Dropout,
-    Embedding,
-    LayerNorm,
-    Linear,
-    Module,
-    ModuleList,
-    Sequential,
-)
+from torch.nn import (Dropout, Embedding, LayerNorm, Linear, Module,
+                      ModuleList, Sequential)
 from torch.nn.modules.activation import GELU
+from torch.nn.utils.rnn import pad_sequence
 
 from tokenizer import Tokens
 from training_utils import create_causal_mask
-from torch.nn.utils.rnn import pad_sequence
 
 
 class MultiHeadAttention(Module):
@@ -110,18 +104,14 @@ class MazeTransformer(Module):
         logits = self.head(x)
         return logits
 
-    def _sample_with_temperature(
-        self,
-        logits: Tensor,
-        temperature: float
-    ):
+    def _sample_with_temperature(self, logits: Tensor, temperature: float):
         # logits is of shape (B, output_vocab_size)
         assert temperature >= 0, "Temperature must be greater than 0!"
         if temperature == 0:
             return torch.argmax(logits, dim=1)
         updated_logits = logits / temperature
         token_probs = torch.softmax(updated_logits, dim=0)
-        return torch.multinomial(token_probs, 1)[0]
+        return torch.multinomial(token_probs, 1).squeeze()
 
     def generate(
         self,
@@ -145,7 +135,9 @@ class MazeTransformer(Module):
                 )
 
                 logits = model_out.squeeze()[-1]
-                prediction = self._sample_with_temperature(logits, 0 if method == "greedy" else temperature)
+                prediction = self._sample_with_temperature(
+                    logits, 0 if method == "greedy" else temperature
+                )
 
                 generated_tokens = torch.concat(
                     [generated_tokens, prediction.unsqueeze(0)]
@@ -159,9 +151,9 @@ class MazeTransformer(Module):
         self,
         x: Tensor,
         sizes: IntTensor,
-        method: Literal["sample", "greedy"] = "greedy",
-        temperature: float = 1.0
-    ) -> Tensor:
+        method: Literal["sample", "greedy"] = "sample",
+        temperature: float = 1.0,
+    ) -> Tuple[List[Tensor], List[Tensor]]:
         # This is definitely not optimized, but I don't want to spend too much
         # time working on the inference logic here.
         # Improvements:
@@ -183,12 +175,13 @@ class MazeTransformer(Module):
             )
 
             logits = model_out[torch.arange(batch_size), sizes + idx - 1]
-            predicted = self._sample_with_temperature(logits, 0 if method == "greedy" else temperature)
+            predicted = self._sample_with_temperature(
+                logits, 0 if method == "greedy" else temperature
+            )
             for i in range(predicted.shape[0]):
-                if finished[0, i].item():
-                    continue
-                predictions[i].append(predicted[i].item())
-                all_logits[i] = torch.cat([all_logits[i], logits[i].unsqueeze(0)])
+                if not finished[0, i].item():
+                    predictions[i].append(predicted[i].item())
+                    all_logits[i] = torch.cat([all_logits[i], logits[i].unsqueeze(0)])
 
             zeros = torch.zeros(batch_size, 1).to(self.device).long()
             rollout_results = torch.cat([rollout_results, zeros], dim=1)
@@ -198,4 +191,5 @@ class MazeTransformer(Module):
             if finished.sum().item() == batch_size:
                 break
 
+        predictions = [torch.tensor(rollout) for rollout in predictions]
         return predictions, all_logits

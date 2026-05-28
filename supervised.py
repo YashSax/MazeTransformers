@@ -18,7 +18,7 @@ from model import MazeTransformer
 from tokenizer import Tokens, tokenize
 
 from tqdm import tqdm
-from training_utils import create_causal_mask
+from training_utils import create_causal_mask, create_wandb_run
 
 
 

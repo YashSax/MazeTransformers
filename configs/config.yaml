@@ -3,7 +3,7 @@ project: "MazeSFT"
 name: "many_mazes_16"
 
 model:
-  name: "ex_2"
+  name: "grpo_1"
   vocab_size: 10
   output_vocab_size: 5
   d_model: 256
@@ -11,7 +11,7 @@ model:
   max_seq_len: 512
   n_heads: 4
   dropout: 0
-  device: cuda
+  device: mps
 
 training:
   supervised:
@@ -21,15 +21,15 @@ training:
     output_dir: supervised/
     device: mps
   grpo:
-    batch_size: 8
+    batch_size: 2
     group_size: 8
     kl_penalty: 0.02
     eps: 0.01
     learning_rate: 0.00005
     num_epochs: 10
     baseline_update_frequency: 1
-    output_dir: grpo/
-    device: cuda
+    output_dir: models/
+    device: mps
 
 
 dataset:
@@ -44,4 +44,8 @@ dataset:
       size: 4
       num_train: 64
       num_test: 32
+    three:
+      size: 3
+      num_train: 32
+      num_test: 16
     output_dir: grpo_data
