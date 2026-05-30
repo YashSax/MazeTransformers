@@ -111,7 +111,7 @@ class MazeTransformer(Module):
             return torch.argmax(logits, dim=1)
         updated_logits = logits / temperature
         token_probs = torch.softmax(updated_logits, dim=0)
-        return torch.multinomial(token_probs, 1).squeeze()
+        return token_probs, torch.multinomial(token_probs, 1).squeeze()
 
     def generate(
         self,
@@ -135,7 +135,7 @@ class MazeTransformer(Module):
                 )
 
                 logits = model_out.squeeze()[-1]
-                prediction = self._sample_with_temperature(
+                _, prediction = self._sample_with_temperature(
                     logits, 0 if method == "greedy" else temperature
                 )
 
@@ -163,7 +163,7 @@ class MazeTransformer(Module):
         #  - KV cache
 
         predictions = [[] for _ in range(x.shape[0])]
-        all_logits = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
+        all_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
 
         rollout_results = deepcopy(x)
         finished = torch.zeros((1, rollout_results.shape[0])).bool().to(self.device)
@@ -175,13 +175,13 @@ class MazeTransformer(Module):
             )
 
             logits = model_out[torch.arange(batch_size), sizes + idx - 1]
-            predicted = self._sample_with_temperature(
+            token_probs, predicted = self._sample_with_temperature(
                 logits, 0 if method == "greedy" else temperature
             )
             for i in range(predicted.shape[0]):
                 if not finished[0, i].item():
                     predictions[i].append(predicted[i].item())
-                    all_logits[i] = torch.cat([all_logits[i], logits[i].unsqueeze(0)])
+                    all_token_probs[i] = torch.cat([all_token_probs[i], token_probs[i].unsqueeze(0)])
 
             zeros = torch.zeros(batch_size, 1).to(self.device).long()
             rollout_results = torch.cat([rollout_results, zeros], dim=1)
@@ -191,5 +191,5 @@ class MazeTransformer(Module):
             if finished.sum().item() == batch_size:
                 break
 
-        predictions = [torch.tensor(rollout) for rollout in predictions]
-        return predictions, all_logits
+        predictions = [torch.IntTensor(rollout) for rollout in predictions]
+        return predictions, all_token_probs

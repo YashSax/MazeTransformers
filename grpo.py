@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import torch
 import yaml
-from torch import Tensor
+from torch import Tensor, IntTensor
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -60,11 +60,27 @@ def calculate_advantages(
 def calculate_importance_sampling_ratio(
     sequences: Tensor,
     sizes: Tensor,
-    predicted_paths: List[Tensor],
+    predicted_paths: List[IntTensor],
     baseline_model: MazeTransformer,
-    predicted_logits: list[Tensor],
+    all_predicted_token_probs: list[Tensor],
 ):
-    print("Predicted path:", predicted_paths)
+    # We shouldn't generate rollouts here - we should run a forward pass on the predicted rollouts
+    # This should be pretty straightforward.
+    with torch.no_grad():
+        _, all_baseline_token_probs = baseline_model.generate_rollouts(sequences, sizes)
+
+    print(all_baseline_token_probs[0].shape)
+    print(predicted_paths[0].shape)
+    print(predicted_paths[0])
+
+    baseline_probs = []
+    for predicted_path, predicted_token_probs, baseline_token_probs in zip(
+        predicted_paths, all_predicted_token_probs, all_baseline_token_probs
+    ):
+
+        baseline_prob = baseline_token_probs[torch.arange(predicted_path.shape[0]), predicted_path].prod()
+
+    print(baseline_probs)
 
 
 def run_grpo(
@@ -97,6 +113,8 @@ def run_grpo(
     optimizer = AdamW(model.parameters(), lr=config["learning_rate"])
 
     baseline_model = deepcopy(model)
+    baseline_model.eval()
+
     for epoch in range(config["num_epochs"]):
         cumulative_train_reward = cumulative_test_reward = 0
         num_train_batches = num_test_batches = 0
@@ -110,8 +128,10 @@ def run_grpo(
             duplicated_sizes = sizes.repeat(config["group_size"])
             duplicated_targets = list(targets) * config["group_size"]
 
-            predictions, all_logits = model.generate_rollouts(
-                duplicated_input_sequences, duplicated_sizes, temperature=1
+            predictions, all_token_probs = model.generate_rollouts(
+                duplicated_input_sequences,
+                duplicated_sizes,
+                temperature=config["sampling_temperature"],
             )
             advantages = calculate_advantages(
                 predictions,
@@ -121,7 +141,11 @@ def run_grpo(
             )
 
             importance_sampling_ratio = calculate_importance_sampling_ratio(
-                duplicated_input_sequences, sizes, predictions, baseline_model, all_logits
+                duplicated_input_sequences,
+                duplicated_sizes,
+                predictions,
+                baseline_model,
+                all_token_probs,
             )
 
             print(advantages)
