@@ -58,11 +58,13 @@ def calculate_advantages(
 
 
 def calculate_importance_sampling_ratio(
+    sequences: Tensor,
+    sizes: Tensor,
     predicted_paths: List[Tensor],
     baseline_model: MazeTransformer,
     predicted_logits: list[Tensor],
 ):
-    pass
+    print("Predicted path:", predicted_paths)
 
 
 def run_grpo(
@@ -119,7 +121,7 @@ def run_grpo(
             )
 
             importance_sampling_ratio = calculate_importance_sampling_ratio(
-                predictions, baseline_model, all_logits
+                duplicated_input_sequences, sizes, predictions, baseline_model, all_logits
             )
 
             print(advantages)
