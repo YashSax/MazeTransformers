@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple, Self
 
 import torch
 import torch.nn.functional as F
@@ -153,6 +153,7 @@ class MazeTransformer(Module):
         sizes: IntTensor,
         method: Literal["sample", "greedy"] = "sample",
         temperature: float = 1.0,
+        baseline_model: "MazeTransformer" = None
     ) -> Tuple[List[Tensor], List[Tensor]]:
         # This is definitely not optimized, but I don't want to spend too much
         # time working on the inference logic here.
@@ -165,13 +166,13 @@ class MazeTransformer(Module):
         predictions = [[] for _ in range(x.shape[0])]
         all_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
 
-        rollout_results = deepcopy(x)
+        rollout_results = deepcopy(x).to(self.device)
         finished = torch.zeros((1, rollout_results.shape[0])).bool().to(self.device)
         for idx in range(self.max_seq_len - sizes.max()):
             batch_size, seq_len = rollout_results.shape
-            causal_masks = create_causal_mask(sizes, seq_len)
+            causal_masks = create_causal_mask(sizes, seq_len).to(self.device)
             model_out = self.forward(
-                rollout_results.to(self.device), causal_masks.to(self.device)
+                rollout_results, causal_masks
             )
 
             logits = model_out[torch.arange(batch_size), sizes + idx - 1]

@@ -58,18 +58,13 @@ def calculate_advantages(
 
 
 def calculate_importance_sampling_ratio(
-    sequences: Tensor,
-    sizes: Tensor,
+    sequences: Tensor, # (B * G, T)
+    sizes: Tensor, # (B * G)
     predicted_paths: List[IntTensor],
     baseline_model: MazeTransformer,
     all_predicted_token_probs: list[Tensor],
 ):
-    # We shouldn't generate rollouts here - we should run a forward pass on the predicted rollouts
-    # This should be pretty straightforward.
-    with torch.no_grad():
-        _, all_baseline_token_probs = baseline_model.generate_rollouts(sequences, sizes)
-
-    print(all_baseline_token_probs[0].shape)
+    
     print(predicted_paths[0].shape)
     print(predicted_paths[0])
 
