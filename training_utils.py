@@ -25,6 +25,6 @@ def create_wandb_run(config: Dict):
     return wandb.init(
         entity=config["entity"],
         project=config["project"],
-        name=f"run: {config["name"]}, model: {config["model"]["name"]}",
+        name=f"run: {config['name']}, model: {config['model']['name']}",
         config=config,
     )

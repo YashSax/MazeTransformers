@@ -105,13 +105,19 @@ class MazeTransformer(Module):
         return logits
 
     def _sample_with_temperature(self, logits: Tensor, temperature: float):
-        # logits is of shape (B, output_vocab_size)
-        assert temperature >= 0, "Temperature must be greater than 0!"
+        # `logits` can either be shaped `(output_vocab_size,)` for a single
+        # example or `(batch_size, output_vocab_size)` for batched rollouts.
+        assert temperature >= 0, "Temperature must be greater than or equal to 0!"
+
         if temperature == 0:
-            return torch.argmax(logits, dim=1)
+            token_probs = torch.softmax(logits, dim=-1)
+            predictions = torch.argmax(logits, dim=-1)
+            return token_probs, predictions
+
         updated_logits = logits / temperature
-        token_probs = torch.softmax(updated_logits, dim=0)
-        return token_probs, torch.multinomial(token_probs, 1).squeeze()
+        token_probs = torch.softmax(updated_logits, dim=-1)
+        predictions = torch.multinomial(token_probs, 1).squeeze(-1)
+        return token_probs, predictions
 
     def generate(
         self,
@@ -172,39 +178,56 @@ class MazeTransformer(Module):
         ref_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
 
         rollout_results = deepcopy(x).to(self.device)
-        finished = torch.zeros((1, rollout_results.shape[0])).bool().to(self.device)
-        for idx in range(self.max_seq_len - sizes.max()):
-            batch_size, seq_len = rollout_results.shape
-            causal_masks = create_causal_mask(sizes, seq_len).to(self.device)
-            model_out = self.forward(
-                rollout_results, causal_masks
-            )
+        sizes_device = sizes.to(self.device)
+        finished = torch.zeros(rollout_results.shape[0], dtype=torch.bool, device=self.device)
+        with torch.no_grad():
+            for idx in range(self.max_seq_len - int(sizes.max().item())):
+                batch_size, seq_len = rollout_results.shape
+                causal_masks = create_causal_mask(sizes, seq_len).to(self.device)
+                model_out = self.forward(rollout_results, causal_masks)
 
-            if baseline_model:
-                baseline_out = baseline_model.forward(rollout_results, causal_masks)
-                baseline_logits = baseline_out[torch.arange(batch_size), sizes + idx - 1]
-                baseline_token_probs, _ = self._sample_with_temperature(baseline_logits, temperature)
+                if baseline_model:
+                    baseline_out = baseline_model.forward(rollout_results, causal_masks)
+                    baseline_logits = baseline_out[
+                        torch.arange(batch_size, device=self.device), sizes_device + idx - 1
+                    ]
+                    baseline_token_probs, _ = self._sample_with_temperature(
+                        baseline_logits, temperature
+                    )
 
-            logits = model_out[torch.arange(batch_size), sizes + idx - 1]
-            token_probs, predicted = self._sample_with_temperature(
-                logits, 0 if method == "greedy" else temperature
-            )
-            for i in range(predicted.shape[0]):
-                if not finished[0, i].item():
+                logits = model_out[
+                    torch.arange(batch_size, device=self.device), sizes_device + idx - 1
+                ]
+                token_probs, predicted = self._sample_with_temperature(
+                    logits, 0 if method == "greedy" else temperature
+                )
+                for i in range(predicted.shape[0]):
+                    if finished[i].item():
+                        continue
+
                     prediction = predicted[i].item()
                     predictions[i].append(prediction)
-                    pred_token_probs[i] = torch.cat([pred_token_probs[i], token_probs[i][prediction].unsqueeze(0)])
+                    pred_token_probs[i] = torch.cat(
+                        [pred_token_probs[i], token_probs[i, prediction].unsqueeze(0)]
+                    )
 
                     if baseline_model:
-                        ref_token_probs[i] = torch.cat([ref_token_probs[i], baseline_token_probs[i][prediction].unsqueeze(0)])
+                        ref_token_probs[i] = torch.cat(
+                            [
+                                ref_token_probs[i],
+                                baseline_token_probs[i, prediction].unsqueeze(0),
+                            ]
+                        )
 
-            zeros = torch.zeros(batch_size, 1).to(self.device).long()
-            rollout_results = torch.cat([rollout_results, zeros], dim=1)
-            rollout_results[torch.arange(batch_size), sizes + idx] = predicted
+                zeros = torch.zeros(batch_size, 1).to(self.device).long()
+                rollout_results = torch.cat([rollout_results, zeros], dim=1)
+                rollout_results[
+                    torch.arange(batch_size, device=self.device), sizes_device + idx
+                ] = predicted
 
-            finished = torch.logical_or(finished, predicted == Tokens.TOKEN_EOS.value)
-            if finished.sum().item() == batch_size:
-                break
+                finished = torch.logical_or(finished, predicted == Tokens.TOKEN_EOS.value)
+                if finished.sum().item() == batch_size:
+                    break
 
         predictions = [torch.IntTensor(rollout) for rollout in predictions]
 
