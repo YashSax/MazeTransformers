@@ -53,29 +53,9 @@ def calculate_advantages(
     )
 
     group_mean_rewards = rewards[group_row_idxs].mean(dim=1).repeat(group_size)
-    advantages = rewards - group_mean_rewards
+    group_mean_std = rewards[group_row_idxs].std(dim=1).repeat(group_size) + 1e-8
+    advantages = (rewards - group_mean_rewards) / group_mean_std
     return advantages
-
-
-def calculate_importance_sampling_ratio(
-    sequences: Tensor, # (B * G, T)
-    sizes: Tensor, # (B * G)
-    predicted_paths: List[IntTensor],
-    baseline_model: MazeTransformer,
-    all_predicted_token_probs: list[Tensor],
-):
-    
-    print(predicted_paths[0].shape)
-    print(predicted_paths[0])
-
-    baseline_probs = []
-    for predicted_path, predicted_token_probs, baseline_token_probs in zip(
-        predicted_paths, all_predicted_token_probs, all_baseline_token_probs
-    ):
-
-        baseline_prob = baseline_token_probs[torch.arange(predicted_path.shape[0]), predicted_path].prod()
-
-    print(baseline_probs)
 
 
 def run_grpo(
@@ -123,11 +103,13 @@ def run_grpo(
             duplicated_sizes = sizes.repeat(config["group_size"])
             duplicated_targets = list(targets) * config["group_size"]
 
-            predictions, all_token_probs = model.generate_rollouts(
+            predictions, pred_token_probs, ref_token_probs = model.generate_rollouts(
                 duplicated_input_sequences,
                 duplicated_sizes,
                 temperature=config["sampling_temperature"],
+                baseline_model=baseline_model
             )
+
             advantages = calculate_advantages(
                 predictions,
                 duplicated_targets,
@@ -135,13 +117,10 @@ def run_grpo(
                 config["batch_size"],
             )
 
-            importance_sampling_ratio = calculate_importance_sampling_ratio(
-                duplicated_input_sequences,
-                duplicated_sizes,
-                predictions,
-                baseline_model,
-                all_token_probs,
-            )
+            pred_token_logprobs = [torch.log(probs) for probs in pred_token_probs]
+            ref_token_logprobs = [torch.log(probs) for probs in ref_token_probs]
+            kl_divergence = [pred - ref for pred, ref in zip(pred_token_logprobs, ref_token_logprobs)]
+
 
             print(advantages)
             assert False

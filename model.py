@@ -162,9 +162,14 @@ class MazeTransformer(Module):
         #    if there's a sequence that fits that needs more iterations it'll
         #    stop early.
         #  - KV cache
+        #
+        # I hate how the number of things this function returns is variable
+        # depending on whether or not baseline_model is passed in. Can future
+        # Yash please clean this up.
 
         predictions = [[] for _ in range(x.shape[0])]
-        all_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
+        pred_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
+        ref_token_probs = [torch.Tensor().to(self.device) for _ in range(x.shape[0])]
 
         rollout_results = deepcopy(x).to(self.device)
         finished = torch.zeros((1, rollout_results.shape[0])).bool().to(self.device)
@@ -175,14 +180,23 @@ class MazeTransformer(Module):
                 rollout_results, causal_masks
             )
 
+            if baseline_model:
+                baseline_out = baseline_model.forward(rollout_results, causal_masks)
+                baseline_logits = baseline_out[torch.arange(batch_size), sizes + idx - 1]
+                baseline_token_probs, _ = self._sample_with_temperature(baseline_logits, temperature)
+
             logits = model_out[torch.arange(batch_size), sizes + idx - 1]
             token_probs, predicted = self._sample_with_temperature(
                 logits, 0 if method == "greedy" else temperature
             )
             for i in range(predicted.shape[0]):
                 if not finished[0, i].item():
-                    predictions[i].append(predicted[i].item())
-                    all_token_probs[i] = torch.cat([all_token_probs[i], token_probs[i].unsqueeze(0)])
+                    prediction = predicted[i].item()
+                    predictions[i].append(prediction)
+                    pred_token_probs[i] = torch.cat([pred_token_probs[i], token_probs[i][prediction].unsqueeze(0)])
+
+                    if baseline_model:
+                        ref_token_probs[i] = torch.cat([ref_token_probs[i], baseline_token_probs[i][prediction].unsqueeze(0)])
 
             zeros = torch.zeros(batch_size, 1).to(self.device).long()
             rollout_results = torch.cat([rollout_results, zeros], dim=1)
@@ -193,4 +207,8 @@ class MazeTransformer(Module):
                 break
 
         predictions = [torch.IntTensor(rollout) for rollout in predictions]
-        return predictions, all_token_probs
+
+        if baseline_model:
+            return predictions, pred_token_probs, ref_token_probs
+
+        return predictions, pred_token_probs
