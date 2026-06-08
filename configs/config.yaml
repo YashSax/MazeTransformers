@@ -1,52 +1,40 @@
 entity: "whysax-agnetic-labs"
 project: "MazeSFT"
-name: "many_mazes_16"
+name: "small_mazes"
 
 model:
   name: "grpo_1"
   vocab_size: 10
   output_vocab_size: 5
-  d_model: 256
-  n_layers: 10
-  max_seq_len: 512
+  d_model: 64
+  n_layers: 5
+  max_seq_len: 32
   n_heads: 4
   dropout: 0
-  device: mps
+  device: cuda
 
 training:
-  supervised:
-    batch_size: 128
-    num_epochs: 1
-    learning_rate: 0.00005
-    output_dir: supervised/
-    device: mps
   grpo:
-    batch_size: 2
-    group_size: 8
-    kl_penalty: 0.1
+    batch_size: 64
+    group_size: 16
+    kl_penalty: 0.001
     eps: 0.2
-    sampling_temperature: 1
+    sampling_temperature: 2
     learning_rate: 0.00005
-    num_epochs: 10
+    num_epochs: 100
     baseline_update_frequency: 1
     output_dir: models/
-    device: mps
+    device: cuda
 
 
 dataset:
-  supervised:
-    sixteen:
-      size: 16
-      num_train: 512
-      num_test: 512
-    output_dir: data
   grpo:
     four:
       size: 4
-      num_train: 64
-      num_test: 32
+      num_train: 512
+      num_test: 256
     three:
       size: 3
-      num_train: 32
-      num_test: 16
+      num_train: 256
+      num_test: 128
     output_dir: grpo_data

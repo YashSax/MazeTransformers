@@ -62,9 +62,9 @@ def calculate_advantages(
     offset = torch.arange(batch_size, device=rewards.device).reshape(batch_size, 1)
     group_row_idxs = base + offset
 
-    group_mean_rewards = rewards[group_row_idxs].mean(dim=1).repeat(group_size)
-    group_mean_std = rewards[group_row_idxs].std(dim=1).repeat(group_size) + 1e-8
-    advantages = (rewards - group_mean_rewards) / group_mean_std
+    group_rewards = rewards[group_row_idxs]
+    group_mean_rewards = group_rewards.mean(dim=1).repeat(group_size)
+    advantages = rewards - group_mean_rewards
     return advantages, rewards
 
 
